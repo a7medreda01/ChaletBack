@@ -24,8 +24,9 @@ namespace AppBL.Mapper
             CreateMap<Chalet, ChaletDto>()
     .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
     .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
-    .ForMember(dest => dest.Images, opt => opt.MapFrom<ChaletImageResolver>()).ReverseMap();
-
+    .ForMember(dest => dest.Images, opt => opt.MapFrom<ChaletImageResolver>())
+    .ForMember(dest => dest.ImageObjects, opt => opt.MapFrom<ChaletImageObjectResolver>())
+    .ReverseMap();
             CreateMap<ChaletCreateDto, Chalet>().ReverseMap().ForMember(dest => dest.Images, opt => opt.Ignore()).ReverseMap();
 
             // =================================
@@ -96,7 +97,10 @@ namespace AppBL.Mapper
             CreateMap<Pricing, CreatePricingDto>().ReverseMap();
             CreateMap<BookingNote, BookingNoteDTO>().ReverseMap();
 
-
+            CreateMap<Notification, NotificationDto>()
+    .ForMember(dest => dest.CreatedAt,
+               opt => opt.MapFrom(src =>
+                   DateTime.SpecifyKind(src.CreatedAt, DateTimeKind.Utc)));
         }
     }
 }

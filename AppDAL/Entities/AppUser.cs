@@ -21,6 +21,8 @@ namespace AppDAL.Entities
 
         // 🔐 Refresh Tokens
         public List<RefreshToken>? RefreshTokens { get; set; } = new();
+        public bool IsActive { get; set; } = true;
+
     }
 }
 

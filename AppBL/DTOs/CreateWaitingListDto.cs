@@ -16,7 +16,7 @@ namespace AppBL.DTOs
         public DateTime Date { get; set; }
         public BookingPeriod Period { get; set; }
         public string Notes { get; set; }
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public int CreatedByUserId { get; set; }
         public AppUser CreatedByUser { get; set; }
 

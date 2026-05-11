@@ -17,7 +17,7 @@ namespace AppDAL.Entities
         public bool IsRead { get; set; } = false;
 
         public int? UserId { get; set; } // لو إشعار لمستخدم معين (Admin)
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public int?  BookingId { get; set; }
     }
 }

@@ -25,7 +25,12 @@ namespace AppDAL.IRepo
         Task CancelAsync(int bookingId);
 
         // 🔎 Get active bookings (for dashboard)
-        Task<IEnumerable<Booking>> GetBookingsAsync();
+        // IBookingRepository.cs
+        Task<(List<Booking> Items, int Total)> GetBookingsPagedAsync(
+            int? userId, bool isPartner,
+            int page, int pageSize,
+            string? search, string? status,
+            string? dateFrom, string? dateTo);
         // get book
         Task<Booking?> GetByChaletDatePeriodAsync(int chaletId, DateTime date, int period);
         //Task<List<Booking>> GetAllByChaletDatePeriodAsync(int chaletId, DateTime date, int period);
@@ -36,6 +41,8 @@ namespace AppDAL.IRepo
         //المتاح لدخول العميل
         Task<List<Booking>> GetByTypeDatePeriodAsync(ChaletType chaletType, DateTime date, BookingPeriod period);
         Task<List<Booking>> GetUpcomingBookingsAsync();
+        List<(string Phone, string CustomerName, int Count, DateTime LastDate)> GetCustomersRawAsync();
+
 
 
 

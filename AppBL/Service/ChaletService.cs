@@ -96,6 +96,8 @@ namespace AppBL.Service
                     var fullPath = Path.Combine(
                         Directory.GetCurrentDirectory(),
                         "wwwroot",
+                        "uploads",
+                        "chalets",
                         img.ImageUrl.TrimStart('/')
                     );
 
@@ -135,9 +137,24 @@ namespace AppBL.Service
             // =========================================
             if (dto.RemovedImageIds != null && dto.RemovedImageIds.Any())
             {
+                var validIds = dto.RemovedImageIds.Where(id => id > 0).ToList();
                 var imagesToRemove = chalet.Images
-                    .Where(i => dto.RemovedImageIds.Contains(i.Id))
+                    .Where(i => validIds.Contains(i.Id))
                     .ToList();
+
+                // ✅ احذف الملفات من الـ disk
+                foreach (var img in imagesToRemove)
+                {
+                    var fullPath = Path.Combine(
+                        Directory.GetCurrentDirectory(),
+                        "wwwroot",
+                        "uploads",
+                        "chalets",        // ← أضف المجلد هنا
+                        img.ImageUrl.TrimStart('/')
+                    );
+                    if (File.Exists(fullPath))
+                        File.Delete(fullPath);
+                }
 
                 _context.ChaletImages.RemoveRange(imagesToRemove);
             }

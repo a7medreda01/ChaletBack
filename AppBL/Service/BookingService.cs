@@ -36,6 +36,7 @@ namespace AppBL.Service
         private readonly HotelDbContext _context;
         private readonly IMapper _mapper;
         private readonly INotificationService _notificationService;
+        private readonly IBookingNoteService _bookingNoteService;
 
         public BookingService(
             IBookingRepository bookingRepo,
@@ -48,7 +49,8 @@ namespace AppBL.Service
             IGenericRepository<BookingExtra> bookingExtraRepo,
             HotelDbContext context,
             IMapper mapper,
-            INotificationService notificationService)
+            INotificationService notificationService,
+            IBookingNoteService bookingNoteService)
         {
             _bookingRepo = bookingRepo;
             _waitingRepo = waitingRepo;
@@ -61,6 +63,7 @@ namespace AppBL.Service
             _context = context;
             _mapper = mapper;
             _notificationService = notificationService;
+            _bookingNoteService = bookingNoteService;
         }
 
         // =========================================
@@ -70,6 +73,8 @@ namespace AppBL.Service
         {
             return !await _bookingRepo.ExistsAsync(chaletId, date, period);
         }
+
+
 
         // =========================================
         // 🔥 Create Booking
@@ -105,7 +110,7 @@ namespace AppBL.Service
                         Status = WaitingStatus.Pending,
                         //Notes = "تم التحويل من حجز Pending",
                         CreatedByUserId = userId,
-                        CreatedAt=DateTime.Now,
+                        CreatedAt=DateTime.UtcNow,
                         NumOfGuests=dto.NumOfGuests,
                         DiscountAmount=dto.DiscountAmount,
                         AdditionalPhone=dto.AdditionalPhone,
@@ -126,8 +131,8 @@ namespace AppBL.Service
             var booking = _mapper.Map<Booking>(dto);
             booking.CreatedByUserId = userId;
             booking.Status = BookingStatus.Pending;
-            booking.CreatedAt = DateTime.Now;
-            booking.ExpireAt = DateTime.Now.AddMinutes(120);
+            booking.CreatedAt = DateTime.UtcNow;
+            booking.ExpireAt = DateTime.UtcNow.AddMinutes(120);
             booking.ChaletType = dto.ChaletType;
             booking.AdditionalPhone = dto.AdditionalPhone;
             booking.DiscountAmount = dto.DiscountAmount;
@@ -170,9 +175,29 @@ namespace AppBL.Service
             }
             await _notificationService.CreateAsync(
                 "حجز جديد",
-                $"تم إنشاء حجز عميل: {dto.CustomerName} كوخ  {dto.ChaletType.ToString()} بتاريخ {dto.Date:yyyy-MM-dd}",
+                $"تم إنشاء حجز عميل: {dto.CustomerName} كوخ  {dto.ChaletType.ToString()} بتاريخ {dto.Date:yyyy-MM-dd} بواسطة {dto.UserName}",
                 booking.Id
             );
+
+            
+            //حفظ الملاحظة
+            if (!string.IsNullOrWhiteSpace(dto.Note))
+            {
+                var noteEntity = new BookingNote
+                {
+                    BookingId = booking.Id,
+                    Note = $"{dto.Note}",
+                    UserName = dto.UserName,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _context.Set<BookingNote>().AddAsync(noteEntity);
+                await _context.SaveChangesAsync();
+            }
+            if (booking.DiscountAmount >0)
+            {
+                await _bookingNoteService.AddNoteAsync(booking.Id, $"تم عمل خصم  {dto.DiscountAmount}", dto.UserName);
+            }
             return new BookingResponseDto
             {
                 Success = true,
@@ -183,10 +208,7 @@ namespace AppBL.Service
         // =========================================
         // 💰 Calculate Price (Pricing + Extras)
         // =========================================
-        public async Task<(decimal chaletPrice, decimal extrasTotal, decimal total)> CalculatePriceDetails(
-     ChaletType chaletType,
-     BookingPeriod period,
-     DateTime date,
+        public async Task<(decimal chaletPrice, decimal extrasTotal, decimal total)> CalculatePriceDetails(ChaletType chaletType,BookingPeriod period,DateTime date,
      List<AddExtraTOBook> extrasDto = null)
         {
             var dayType = await GetDayType(date);
@@ -242,7 +264,7 @@ namespace AppBL.Service
                 Amount = deposit,
                 Method = PaymentMethod.Cash,
                 Status = PaymentStatus.Paid,
-                CreatedAt = DateTime.Now,
+                CreatedAt = DateTime.UtcNow,
                 TransactionId = Guid.NewGuid().ToString()
             };
 
@@ -265,7 +287,7 @@ namespace AppBL.Service
                     BookingId = bookingId,
                     Note = $"إلغاء الحجز: {notes}",
                     UserName = UserName,
-                    CreatedAt = DateTime.Now
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 await _context.Set<BookingNote>().AddAsync(noteEntity);
@@ -280,7 +302,7 @@ namespace AppBL.Service
             await _bookingRepo.SaveAsync();
             await _notificationService.CreateAsync(
     "الغاء حجز",
-    $"تم الغاء حجز  {notes}  رقم {bookingId} بتاريخ {DateTime.Now:yyyy-MM-dd} , بواسطة {UserName}",bookingId
+    $"تم الغاء حجز  {notes}  رقم {bookingId} بتاريخ {DateTime.UtcNow:yyyy-MM-dd} , بواسطة {UserName}",bookingId
 );
 
         }
@@ -288,10 +310,23 @@ namespace AppBL.Service
         // =========================================
         // 📊 Get All
         // =========================================
-        public async Task<IEnumerable<BookingDto>> GetAll()
+        public async Task<PagedResult<BookingDto>> GetBookingsPagedAsync(
+            int? userId, bool isPartner,
+            int page, int pageSize,
+            string? search, string? status,
+            string? dateFrom, string? dateTo)
         {
-            var data = await _bookingRepo.GetBookingsAsync();
-            return _mapper.Map<IEnumerable<BookingDto>>(data);
+            var (items, total) = await _bookingRepo.GetBookingsPagedAsync(
+                userId, isPartner, page, pageSize, search, status, dateFrom, dateTo);
+
+            return new PagedResult<BookingDto>
+            {
+                Data = _mapper.Map<List<BookingDto>>(items),
+                Total = total,
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling((double)total / pageSize)
+            };
         }
 
         // =========================================
@@ -351,7 +386,7 @@ namespace AppBL.Service
             await _bookingRepo.SaveAsync();
         }
 
-        public async Task<BookingResponseDto> UpdateBookingAsync(UpdateBookingDto dto)
+        public async Task<BookingResponseDto> UpdateBookingAsync(UpdateBookingDto dto,string userName)
         {
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -364,6 +399,10 @@ namespace AppBL.Service
                 if (booking == null)
                     throw new Exception("الحجز غير موجود");
 
+                if (booking.DiscountAmount != dto.DiscountAmount)
+                {
+                    await _bookingNoteService.AddNoteAsync(dto.BookingId,$"تم تعديل الخصم الي {dto.DiscountAmount}",userName);
+                }
                 // 1️⃣ تحديث بيانات العميل
                 booking.CustomerName = dto.CustomerName;
                 booking.Phone = dto.Phone;
@@ -389,12 +428,13 @@ namespace AppBL.Service
                         PaymentReson = PaymentReson.Price,
                         Method = PaymentMethod.Cash,
                         Status = PaymentStatus.Paid,
-                        CreatedAt = DateTime.Now,
+                        CreatedAt = DateTime.UtcNow,
                         TransactionId = Guid.NewGuid().ToString()
                     };
                     await _paymentRepo.AddAsync(payment);
-
                 }
+
+                await _bookingNoteService.AddNoteAsync(dto.BookingId,"تم تعديل الحجز",userName);
 
                 // 🔥 حفظ التغييرات أولًا (عشان الحذف يتم فعليًا)
                 await _context.SaveChangesAsync();
@@ -447,7 +487,7 @@ namespace AppBL.Service
             return _mapper.Map<IEnumerable<BookingDto>>(data);
         }
 
-        public async Task<BookingResponseDto> MarkAsDone(int bookingId, int payMoney, int chaletId)
+        public async Task<BookingResponseDto> MarkAsDone(int bookingId, int payMoney, int chaletId, string UserName)
         {
             var booking = await _bookingRepo.GetByIdAsync(bookingId);
 
@@ -504,13 +544,26 @@ namespace AppBL.Service
                     PaymentReson = PaymentReson.Price,
                     Method = PaymentMethod.Cash,
                     Status = PaymentStatus.Paid,
-                    CreatedAt = DateTime.Now,
+                    CreatedAt = DateTime.UtcNow,
                     TransactionId = Guid.NewGuid().ToString()
                 };
 
                 await _paymentRepo.AddAsync(payment);
                 await _paymentRepo.SaveAsync();
             }
+
+            
+                var noteEntity = new BookingNote
+                {
+                    BookingId = bookingId,
+                    Note = $"تم تسليم الكوخ",
+                    UserName = UserName,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _context.Set<BookingNote>().AddAsync(noteEntity);
+                await _context.SaveChangesAsync();
+            
 
             return new BookingResponseDto
             {
@@ -519,6 +572,10 @@ namespace AppBL.Service
                 BookingId = booking.Id
             };
         }
+
+
+
+
         public async Task<IEnumerable<BookingDto>> GetUpcomingBookingsAsync()
         {
             var bookings = await _bookingRepo.GetUpcomingBookingsAsync();
@@ -534,6 +591,112 @@ namespace AppBL.Service
                 .GetByTypeDatePeriodAsync(chaletType, date, period);
 
             return _mapper.Map<IEnumerable<BookingDto>>(bookings);
+        }
+        public async Task<DashboardDto> GetDashboardAsync(
+    int? userId, bool isPartner,
+    DateTime from, DateTime to,
+    DateTime prevFrom, DateTime prevTo)
+        {
+            var baseQuery = _context.Bookings
+                .Include(b => b.Chalet)
+                .Include(b => b.BookingExtras).ThenInclude(e => e.Extra)
+                .Include(b => b.CreatedByUser)
+                .Include(b => b.Payments)
+                .AsNoTracking()
+                .AsQueryable();
+
+            if (isPartner && userId.HasValue)
+                baseQuery = baseQuery.Where(b =>
+                    b.Chalet.ChaletOwners.Any(o => o.UserId == userId));
+
+            var current = await baseQuery.Where(b => b.Date >= from && b.Date <= to).ToListAsync();
+            var previous = await baseQuery.Where(b => b.Date >= prevFrom && b.Date <= prevTo).ToListAsync();
+
+            var recent = await baseQuery
+                .OrderByDescending(b => b.CreatedAt)
+                .Take(8)
+                .ToListAsync();
+
+            var chaletsQuery = _context.Chalets.AsNoTracking().AsQueryable();
+            if (isPartner && userId.HasValue)
+                chaletsQuery = chaletsQuery.Where(c =>
+                    c.ChaletOwners.Any(o => o.UserId == userId));
+            var chalets = await chaletsQuery.ToListAsync();
+
+            var confirmedDone = current
+                .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Done)
+                .ToList();
+
+            var prevConfirmedDone = previous
+                .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Done)
+                .ToList();
+
+            return new DashboardDto
+            {
+                TotalBookings = current.Count,
+                ConfirmedBookings = current.Count(b => b.Status == BookingStatus.Confirmed),
+                DoneBookings = current.Count(b => b.Status == BookingStatus.Done),
+                PendingBookings = current.Count(b => b.Status == BookingStatus.Pending),
+                CancelledBookings = current.Count(b => b.Status == BookingStatus.Cancelled),
+                TotalRevenue = confirmedDone.Sum(b => b.TotalPrice),
+                ChaletRevenue = confirmedDone.Sum(b => b.ChaletPrice),
+                ExtrasRevenue = confirmedDone.Sum(b => (decimal)(b.ExtrasTotal ?? 0)),
+                DepositSum = current.Where(b => b.Deposit != null).Sum(b => b.Deposit ?? 0),
+                DiscountSum = current.Sum(b => b.DiscountAmount),
+
+                PrevTotalBookings = previous.Count,
+                PrevCancelledBookings = previous.Count(b => b.Status == BookingStatus.Cancelled),
+                PrevTotalRevenue = prevConfirmedDone.Sum(b => b.TotalPrice),
+
+                RecentBookings = _mapper.Map<List<BookingDto>>(recent),
+                Chalets = chalets.Select(c => new ChaletStatusDto
+                {
+                    Name = c.Name,
+                    Status = c.Status.ToString(),
+                    Type = c.Type.ToString(),
+                }).ToList(),
+            };
+        }
+
+
+        public async Task<List<BookingDto>> GetBookingsForExportAsync(
+    int? userId, bool isPartner,
+    int year, int month)
+        {
+            var from = new DateTime(year, month, 1);
+            var to = new DateTime(year, month, DateTime.DaysInMonth(year, month), 23, 59, 59);
+
+            var query = _context.Bookings
+                .Include(b => b.Chalet)
+                .Include(b => b.BookingExtras).ThenInclude(e => e.Extra)
+                .Include(b => b.CreatedByUser)
+                .Include(b => b.Payments)
+                .Include(b => b.Notes)
+                .AsNoTracking()
+                .Where(b => b.Date >= from && b.Date <= to);
+
+            if (isPartner && userId.HasValue)
+                query = query.Where(b =>
+                    b.Chalet.ChaletOwners.Any(o => o.UserId == userId));
+
+            var data = await query
+                .OrderBy(b => b.Date)
+                .ToListAsync();
+
+            return _mapper.Map<List<BookingDto>>(data);
+        }
+
+
+        public  List<CustomerDto> GetCustomersAsync()
+        {
+            var raw =  _bookingRepo.GetCustomersRawAsync();
+            return raw.Select(r => new CustomerDto
+            {
+                CustomerName = r.CustomerName,
+                Phone = r.Phone,
+                BookingsCount = r.Count,
+                LastBookingDate = r.LastDate.ToString("yyyy-MM-dd")
+            }).ToList();
         }
     }
 }

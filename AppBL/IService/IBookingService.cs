@@ -45,18 +45,28 @@ namespace AppBL.IService
         // =========================================
         // 📊 Queries
         // =========================================
-        Task<IEnumerable<BookingDto>> GetAll();
+        Task<PagedResult<BookingDto>> GetBookingsPagedAsync(
+            int? userId, bool isPartner,
+            int page, int pageSize,
+            string? search, string? status,
+            string? dateFrom, string? dateTo);
         Task<BookingDto> GetDetails(int id);
         Task AddExtraToBooking(AddExtraDto dto);
-        Task<BookingResponseDto> UpdateBookingAsync(UpdateBookingDto dto);
+        Task<BookingResponseDto> UpdateBookingAsync(UpdateBookingDto dto, string userName);
         Task<IEnumerable<BookingDto>> GetBookingsByPartnerAsync(int userId);
-        Task<BookingResponseDto> MarkAsDone(int bookingId, int PayMoney, int chaletId);
+        Task<BookingResponseDto> MarkAsDone(int bookingId, int PayMoney, int chaletId, string UserName);
         Task<IEnumerable<BookingDto>> GetUpcomingBookingsAsync();
         Task<IEnumerable<BookingDto>> GetByTypeDatePeriodAsync(
     ChaletType chaletType,
     DateTime date,
     BookingPeriod period);
+        Task<DashboardDto> GetDashboardAsync(
+    int? userId, bool isPartner,
+    DateTime from, DateTime to, DateTime prevFrom, DateTime prevTo);
+        Task<List<BookingDto>> GetBookingsForExportAsync(
+    int? userId, bool isPartner,
+    int year, int month);
 
-
+        List<CustomerDto> GetCustomersAsync();
     }
 }

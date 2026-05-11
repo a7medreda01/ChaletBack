@@ -28,7 +28,7 @@ namespace AppDAL.Entities
         public ICollection<BookingExtra> BookingExtras { get; set; }
 
         public ICollection<Payment> Payments { get; set; }
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? ExpireAt { get; set; }
         public int CreatedByUserId { get; set; }
         public AppUser CreatedByUser { get; set; }

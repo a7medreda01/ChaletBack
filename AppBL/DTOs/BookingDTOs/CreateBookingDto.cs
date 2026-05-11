@@ -19,10 +19,11 @@ namespace AppBL.DTOs.BookingDTOs
         //public int? ChaletId { get; set; }
         public int NumOfGuests { get; set; }
             public List<AddExtraTOBook>? Extras { get; set; }
-        //public ICollection<BookingNote> Notes { get; set; }
+        public string? Note { get; set; }
         public string? AdditionalPhone { get; set; }
         public decimal DiscountAmount { get; set; } = 0;
         public decimal Price { get; set; } = 0;
+        public string? UserName { get; set; }
 
     }
 

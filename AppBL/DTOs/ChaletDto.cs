@@ -13,6 +13,8 @@ namespace AppBL.DTOs
         public string Type { get; set; }
         public string Status { get; set; }
         public List<string> Images { get; set; }
+        public List<ChaletImageDto> ImageObjects { get; set; } // ← جديد
+
         public int? PartnerId { get; set; }
         public decimal SharePercentage { get; set; } // نسبة الشريك في الشاليه
         public bool HasMorning { get; set; } = false;

@@ -29,8 +29,9 @@ namespace AppDAL.Context
             // 👑 ADMIN
             // =========================
             var adminEmail = "babnha52@gmail.com".ToLower();
+            var def = "def@admin.com".ToLower();
             var admin = await userManager.FindByEmailAsync(adminEmail);
-
+            var defAdmin = await userManager.FindByEmailAsync(def);
             if (admin == null)
             {
                 admin = new AppUser
@@ -39,13 +40,27 @@ namespace AppDAL.Context
                     Email = adminEmail,
                     FullName = "احمد عبابنه",
                     EmailConfirmed = true,
-                    MustChangePassword = true
+                    MustChangePassword = true,
+                    IsActive=true
                 };
 
                 await userManager.CreateAsync(admin, "Admin@12345");
             }
+            if (defAdmin == null)
+            {
+                defAdmin = new AppUser
+                {
+                    UserName = def,
+                    Email = def,
+                    FullName = "ادمن احطياتي",
+                    EmailConfirmed = true,
+                    MustChangePassword = true,
+                    IsActive = true
+                };
 
-            await userManager.AddToRoleAsync(admin, Roles.Manager);
+                await userManager.CreateAsync(defAdmin, "Admin@12345");
+            }
+            await userManager.AddToRoleAsync(defAdmin, Roles.Manager);
 
             // =========================
             // 👤 PARTNERS
@@ -163,26 +178,26 @@ namespace AppDAL.Context
                     // 🇯🇴 National Holidays (ثابتة)
                     // =========================
 
-                    new Holiday {  Name = "عيد الاستقلال", Date = new DateTime(DateTime.Now.Year, 5, 25) },
-                    new Holiday {  Name = "عيد الجلوس الملكي", Date = new DateTime(DateTime.Now.Year, 6, 9) },
-                    new Holiday {  Name = "عيد الثورة العربية الكبرى", Date = new DateTime(DateTime.Now.Year, 6, 10) },
-                    new Holiday {  Name = "عيد الجيش", Date = new DateTime(DateTime.Now.Year, 6, 10) },
+                    new Holiday {  Name = "عيد الاستقلال", Date = new DateTime(DateTime.UtcNow.Year, 5, 25) },
+                    new Holiday {  Name = "عيد الجلوس الملكي", Date = new DateTime(DateTime.UtcNow.Year, 6, 9) },
+                    new Holiday {  Name = "عيد الثورة العربية الكبرى", Date = new DateTime(DateTime.UtcNow.Year, 6, 10) },
+                    new Holiday {  Name = "عيد الجيش", Date = new DateTime(DateTime.UtcNow.Year, 6, 10) },
 
                     // ==================
                     // 🌙 Islamic s (متغيرة - تقديرية)
                     // ==================
                     //الحج / الأضحى
-                    new Holiday {  Name = "يوم عرفة ", Date = new DateTime(DateTime.Now.Year, 6, 16) },
-                    new Holiday {  Name = "عيد الأضحى ", Date = new DateTime(DateTime.Now.Year, 6, 17) },
+                    new Holiday {  Name = "يوم عرفة ", Date = new DateTime(DateTime.UtcNow.Year, 6, 16) },
+                    new Holiday {  Name = "عيد الأضحى ", Date = new DateTime(DateTime.UtcNow.Year, 6, 17) },
 
                     // المولد
-                    new Holiday {  Name = "المولد النبوي الشريف", Date = new DateTime(DateTime.Now.Year, 9, 15) },
+                    new Holiday {  Name = "المولد النبوي الشريف", Date = new DateTime(DateTime.UtcNow.Year, 9, 15) },
 
                     // ==================
                     // 🎉 New Yearrnational
                     // ==================
 
-                    new Holiday {  Name = "رأس السنة الميلادية", Date = new DateTime(DateTime.Now.Year, 1, 1) }
+                    new Holiday {  Name = "رأس السنة الميلادية", Date = new DateTime(DateTime.UtcNow.Year, 1, 1) }
 
                 );
 

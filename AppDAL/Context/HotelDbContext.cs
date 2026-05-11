@@ -73,7 +73,14 @@ namespace AppDAL.Context
                 .HasPrecision(10, 2);
             modelBuilder.Entity<Chalet>().Property(x => x.Id)
                 .ValueGeneratedNever();
-
+            modelBuilder.Entity<Booking>()
+                .Property(c => c.CreatedAt)
+                .HasColumnType("datetime2(0)");
+            modelBuilder.Entity<Booking>()
+    .HasOne(b => b.CreatedByUser)
+    .WithMany()
+    .HasForeignKey(b => b.CreatedByUserId)
+    .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

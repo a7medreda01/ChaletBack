@@ -7,6 +7,7 @@ using AppDAL.Context;
 using AppDAL.Entities;
 using AppDAL.IRepo;
 using Microsoft.EntityFrameworkCore;
+using static AppDAL.Repo.BookingRepository;
 
 namespace AppDAL.Repo
 {
@@ -67,11 +68,63 @@ namespace AppDAL.Repo
         }
 
         // 📊 Active bookings
-        public async Task<IEnumerable<Booking>> GetBookingsAsync()
+        // BookingRepository.cs
+        public async Task<(List<Booking> Items, int Total)> GetBookingsPagedAsync(
+            int? userId, bool isPartner,
+            int page, int pageSize,
+            string? search, string? status,
+            string? dateFrom, string? dateTo)
         {
-            return await _context.Bookings.Include(b=>b.Chalet).Include(b=>b.BookingExtras).ThenInclude(b=>b.Extra).Include(b=>b.CreatedByUser).Include(b=>b.Payments)
-                .Include(b=>b.Notes)
-                .ToListAsync();
+            var query = _context.Bookings
+                .Include(b => b.Chalet)
+                .Include(b => b.BookingExtras).ThenInclude(e => e.Extra)
+                .Include(b => b.CreatedByUser)
+                .Include(b => b.Payments)
+                .Include(b => b.Notes)
+                .AsNoTracking()
+                .AsQueryable();
+
+            // Partner filter
+            if (isPartner && userId.HasValue)
+                query = query.Where(b => b.Chalet.ChaletOwners.Any(o => o.UserId == userId));
+
+            // Search
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(b =>
+                    b.CustomerName.Contains(search) ||
+                    b.Phone.Contains(search) ||
+                    b.Id.ToString().Contains(search) ||
+                    (b.Chalet != null && b.Chalet.Name.Contains(search)));
+
+            // Status
+            if (Enum.TryParse<BookingStatus>(status, out var statusEnum))
+                query = query.Where(b => b.Status == statusEnum);
+            // Date range
+            if (!string.IsNullOrWhiteSpace(dateFrom) && DateTime.TryParse(dateFrom, out var from))
+                query = query.Where(b => b.Date >= from);
+
+            if (!string.IsNullOrWhiteSpace(dateTo) && DateTime.TryParse(dateTo, out var to))
+                query = query.Where(b => b.Date <= to);
+
+            var total = await query.CountAsync();
+
+            // Sort: future first (closest), then past (most recent)
+            var today = DateTime.Today;
+            var yesterday = today.AddDays(-1);
+
+            //var total = await query.CountAsync();
+
+            var allItems = await query.ToListAsync(); // جيب الكل أولاً
+
+            var items = allItems
+                .OrderBy(b => b.Date.Date < today ? 1 : 0)   // future/today أولاً
+                .ThenBy(b => b.Date.Date >= today ? b.Date : DateTime.MaxValue - b.Date.TimeOfDay)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+
+            return (items, total);
         }
 
         //الحجز الحالي
@@ -151,6 +204,25 @@ namespace AppDAL.Repo
                 .ToListAsync();
         }
 
+
+            public List<(string Phone, string CustomerName, int Count, DateTime LastDate)> GetCustomersRawAsync()
+            {
+                return  _context.Bookings
+                    .Where(b => b.Status != BookingStatus.Cancelled)
+                    .GroupBy(b => b.Phone.Trim())
+                    .Select(g => new
+                    {
+                        Phone = g.Key,
+                        CustomerName = g.First().CustomerName,
+                        Count = g.Count(),
+                        LastDate = g.Max(b => b.Date)
+                    })
+                    .OrderByDescending(g => g.Count)
+                    .AsEnumerable() // ← نزّل للـ memory عشان ValueTuple مش بيتترجم لـ SQL
+                    .Select(g => (g.Phone, g.CustomerName, g.Count, g.LastDate))
+                    .ToList();
+            }
+        
 
     }
 }

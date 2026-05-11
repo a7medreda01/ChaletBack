@@ -15,5 +15,7 @@ namespace AppBL.IService
         Task<string> ResetPasswordAsync(ResetPasswordDto dto);
         Task<List<UserWithRoleDto>> GetAllUsersAsync();
         Task<string> DeleteUserAsync(string userId);
+        Task<LoginResponseDto> RefreshTokenAsync(string refreshToken);
+        Task<bool> RevokeTokenAsync(string refreshToken);
     }
 }

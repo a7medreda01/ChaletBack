@@ -11,6 +11,7 @@ namespace AppBL.Service
     using AppDAL.Context;
     using AppDAL.Entities;
     using AppDAL.IRepo;
+    using AutoMapper;
     using Microsoft.AspNetCore.SignalR;
     using Microsoft.EntityFrameworkCore;
 
@@ -18,13 +19,16 @@ namespace AppBL.Service
     {
         private readonly INotificationRepository _notificationRepo;
         private readonly IHubContext<NotificationHub> _hub;
+        private readonly IMapper _mapper;
 
         public NotificationService(
             INotificationRepository notificationRepo,
-            IHubContext<NotificationHub> hub)
+            IHubContext<NotificationHub> hub,
+            IMapper mapper)
         {
             _notificationRepo = notificationRepo;
             _hub = hub;
+            _mapper = mapper;
         }
 
         // ➕ Create Notification
@@ -35,56 +39,32 @@ namespace AppBL.Service
                 Title = title,
                 Message = message,
                 IsRead = false,
-                CreatedAt = DateTime.Now,
-                BookingId=bookingId
+                CreatedAt = DateTime.UtcNow,
+                BookingId = bookingId
             };
 
             await _notificationRepo.AddAsync(notification);
             await _notificationRepo.SaveAsync();
 
-            // 🔥 Send Real-time to Admin
-            await _hub.Clients.All.SendAsync("ReceiveNotification", new
-            {
-                notification.Id,
-                notification.Title,
-                notification.Message,
-                notification.CreatedAt,
-                notification.BookingId
-            });
+            var dto = _mapper.Map<NotificationDto>(notification);
+
+            // 🔥 Send Real-time to Admin — CreatedAt بـ Z في الـ JSON
+            await _hub.Clients.All.SendAsync("ReceiveNotification", dto);
         }
 
         // 📥 Get All
         public async Task<List<NotificationDto>> GetAllAsync()
         {
             var data = await _notificationRepo.GetAllAsync();
-
-            return data.Select(x => new NotificationDto
-            {
-                Id = x.Id,
-                Title = x.Title,
-                Message = x.Message,
-                IsRead = x.IsRead,
-                CreatedAt = x.CreatedAt,
-                BookingId=x.BookingId
-            }).ToList();
+            return _mapper.Map<List<NotificationDto>>(data);
         }
 
         // 🔴 Unread only
         public async Task<List<NotificationDto>> GetUnreadAsync()
         {
             var data = await _notificationRepo.GetUnreadAsync();
-
-            return data.Select(x => new NotificationDto
-            {
-                Id = x.Id,
-                Title = x.Title,
-                Message = x.Message,
-                IsRead = x.IsRead,
-                CreatedAt = x.CreatedAt,
-                BookingId= x.BookingId
-            }).ToList();
+            return _mapper.Map<List<NotificationDto>>(data);
         }
-
 
         // ✅ Mark as read
         public async Task MarkAsReadAsync(int id)

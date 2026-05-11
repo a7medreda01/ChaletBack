@@ -24,7 +24,7 @@ namespace AppBL.Helpers
                 await file.CopyToAsync(stream);
             }
 
-            return $"/{folder}/{fileName}";
+            return $"/{fileName}";
         }
     }
 }

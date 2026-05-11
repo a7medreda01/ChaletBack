@@ -8,11 +8,13 @@ namespace AppBL.Service
 {
     using System.IdentityModel.Tokens.Jwt;
     using System.Security.Claims;
+    using System.Security.Cryptography;
     using AppBL.DTOs.loginDTOs;
     using AppBL.IService;
     using AppBL.Mapper;
     using AppDAL.Entities;
     using Microsoft.AspNetCore.Identity;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.IdentityModel.Tokens;
 
@@ -45,6 +47,8 @@ namespace AppBL.Service
 
             if (!result.Succeeded)
                 throw new Exception("Invalid email or password");
+            if (!user.IsActive)
+                throw new Exception("Inactive account");
 
             // 🔹 Get Role
             var roles = await _userManager.GetRolesAsync(user);
@@ -52,6 +56,21 @@ namespace AppBL.Service
 
             // 🔹 Generate Token
             var token = GenerateJwtToken(user, role);
+
+            var refreshToken = GenerateRefreshToken();
+            user.RefreshTokens.Add(refreshToken);
+            await _userManager.UpdateAsync(user);
+
+            return new LoginResponseDto
+            {
+                Token = token,
+                RefreshToken = refreshToken.Token,           // ← أضف
+                RefreshTokenExpiration = refreshToken.ExpiresOn, // ← أضف
+                UserId = user.Id,
+                Email = user.Email,
+                FullName = user.FullName,
+                Role = role
+            };
 
             return new LoginResponseDto
             {
@@ -157,7 +176,7 @@ namespace AppBL.Service
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.Now.AddDays(7),
+                expires: DateTime.UtcNow.AddDays(7),
                 signingCredentials: creds
             );
 
@@ -178,7 +197,8 @@ namespace AppBL.Service
                     Id = user.Id,
                     Email = user.Email,
                     FullName = user.FullName,
-                    Role = roles.FirstOrDefault()
+                    Role = roles.FirstOrDefault(),
+                    IsActive=user.IsActive
                 });
             }
 
@@ -198,5 +218,112 @@ namespace AppBL.Service
 
             return "User deleted successfully";
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ─── Generate Refresh Token ───────────────────
+    private RefreshToken GenerateRefreshToken()
+    {
+        var randomBytes = new byte[64];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(randomBytes);
+        return new RefreshToken
+        {
+            Token = Convert.ToBase64String(randomBytes),
+            ExpiresOn = DateTime.UtcNow.AddDays(7),
+            CreatedOn = DateTime.UtcNow
+        };
     }
+
+        // ─── Refresh Token ────────────────────────────
+        public async Task<LoginResponseDto> RefreshTokenAsync(string refreshToken)
+        {
+            var user = await _userManager.Users
+                .Include(u => u.RefreshTokens)
+                .SingleOrDefaultAsync(u =>
+                    u.RefreshTokens.Any(t => t.Token == refreshToken));
+
+            if (user == null)
+                throw new UnauthorizedAccessException("Invalid token");
+
+            // ✅ الموظف inactive
+            if (!user.IsActive)
+            {
+                // revoke كل refresh tokens
+                foreach (var token in user.RefreshTokens
+                             .Where(t => t.IsActive))
+                {
+                    token.RevokedOn = DateTime.UtcNow;
+                }
+
+                await _userManager.UpdateAsync(user);
+
+                throw new UnauthorizedAccessException("Account is inactive");
+            }
+
+            var oldToken = user.RefreshTokens
+                .SingleOrDefault(t => t.Token == refreshToken);
+
+            if (oldToken == null)
+                throw new UnauthorizedAccessException("Invalid token");
+
+            if (!oldToken.IsActive)
+                throw new UnauthorizedAccessException("Token expired");
+
+            // revoke old token
+            oldToken.RevokedOn = DateTime.UtcNow;
+
+            // create new refresh token
+            var newRefreshToken = GenerateRefreshToken();
+            user.RefreshTokens.Add(newRefreshToken);
+
+            await _userManager.UpdateAsync(user);
+
+            var roles = await _userManager.GetRolesAsync(user);
+            var role = roles.FirstOrDefault();
+
+            var jwt = GenerateJwtToken(user, role);
+
+            return new LoginResponseDto
+            {
+                Token = jwt,
+                RefreshToken = newRefreshToken.Token,
+                RefreshTokenExpiration = newRefreshToken.ExpiresOn,
+                UserId = user.Id,
+                Email = user.Email,
+                FullName = user.FullName,
+                Role = role
+            };
+        }
+
+        // ─── Revoke (Logout) ──────────────────────────
+        public async Task<bool> RevokeTokenAsync(string refreshToken)
+    {
+        var user = _userManager.Users
+            .Include(u => u.RefreshTokens)
+            .SingleOrDefault(u => u.RefreshTokens.Any(t => t.Token == refreshToken));
+
+        if (user == null) return false;
+
+        var token = user.RefreshTokens.Single(t => t.Token == refreshToken);
+        if (!token.IsActive) return false;
+
+        token.RevokedOn = DateTime.UtcNow;
+        await _userManager.UpdateAsync(user);
+        return true;
+    }
+}
 }

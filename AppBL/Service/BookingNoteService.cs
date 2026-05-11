@@ -30,7 +30,7 @@ namespace AppBL.Service
                 BookingId = bookingId,
                 Note = note,
                 UserName = userName,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             await _noteRepo.AddAsync(entity);

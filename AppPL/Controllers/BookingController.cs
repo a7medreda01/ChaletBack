@@ -50,6 +50,10 @@ namespace AppPL.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
             var userId = int.Parse(User.FindFirst("uid")?.Value);
+            var UserName = User.FindFirst(ClaimTypes.Name)?.Value
+                               ?? User.Identity?.Name
+                               ?? "Unknown";
+            dto.UserName = UserName;
             var result = await _service.CreateBooking(dto, userId);
 
             return Ok(new
@@ -108,32 +112,29 @@ namespace AppPL.Controllers
 
 
 
-
         [Authorize]
         [HttpGet]
-        public async Task<IActionResult> GetBooks()
+        public async Task<IActionResult> GetBooks(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? dateFrom = null,
+            [FromQuery] string? dateTo = null)
         {
             var userIdClaim = User.FindFirst("uid")?.Value;
-
             if (!int.TryParse(userIdClaim, out int userId))
-            {
                 return Unauthorized("Invalid or missing user id");
-            }
 
             try
             {
-                if (User.IsInRole(Roles.Partner))
-                {
-                    var result = await _service.GetBookingsByPartnerAsync(userId);
-                    return Ok(result);
-                }
-
-                var allResult = await _service.GetAll();
-                return Ok(allResult);
+                var isPartner = User.IsInRole(Roles.Partner);
+                var result = await _service.GetBookingsPagedAsync(
+                    userId, isPartner, page, pageSize, search, status, dateFrom, dateTo);
+                return Ok(result);
             }
             catch (Exception ex)
             {
-                // مهم جدًا للتشخيص
                 return StatusCode(500, ex.Message);
             }
         }
@@ -163,10 +164,12 @@ namespace AppPL.Controllers
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-
+            var UserName = User.FindFirst(ClaimTypes.Name)?.Value
+                   ?? User.Identity?.Name
+                   ?? "Unknown";
             try
             {
-                var result = await _service.UpdateBookingAsync(dto);
+                var result = await _service.UpdateBookingAsync(dto, UserName);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -181,9 +184,14 @@ namespace AppPL.Controllers
         [HttpPut("{id}/done")]
         public async Task<IActionResult> MarkAsDone(int id, int PayMoney, int chaletId)
         {
+            // اسم الموظف من التوكن
+            var employeeName = User.FindFirst(ClaimTypes.Name)?.Value
+                               ?? User.Identity?.Name
+                               ?? "Unknown";
+
             try
             {
-                var result = await _service.MarkAsDone(id, PayMoney,chaletId);
+                var result = await _service.MarkAsDone(id, PayMoney,chaletId, employeeName);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -243,6 +251,73 @@ namespace AppPL.Controllers
                     message = ex.Message
                 });
             }
+        }
+
+
+        [Authorize]
+        [HttpGet("dashboard")]
+        public async Task<IActionResult> GetDashboard(
+    [FromQuery] string filter = "30",
+    [FromQuery] string? dateFrom = null,
+    [FromQuery] string? dateTo = null)
+        {
+            var userIdClaim = User.FindFirst("uid")?.Value;
+            if (!int.TryParse(userIdClaim, out int userId))
+                return Unauthorized();
+
+            var isPartner = User.IsInRole(Roles.Partner);
+            var now = DateTime.Today;
+            DateTime from, to, prevFrom, prevTo;
+
+            if (filter == "custom" && dateFrom != null && dateTo != null)
+            {
+                from = DateTime.Parse(dateFrom);
+                to = DateTime.Parse(dateTo);
+                var diff = to - from;
+                prevTo = from.AddDays(-1);
+                prevFrom = prevTo - diff;
+            }
+            else if (filter == "month")
+            {
+                from = new DateTime(now.Year, now.Month, 1);
+                to = now;
+                prevFrom = from.AddMonths(-1);
+                prevTo = from.AddDays(-1);
+            }
+            else
+            {
+                var days = int.TryParse(filter, out var d) ? d : 30;
+                from = now.AddDays(-days);
+                to = now;
+                prevFrom = now.AddDays(-days * 2);
+                prevTo = from.AddDays(-1);
+            }
+
+            var result = await _service.GetDashboardAsync(
+                userId, isPartner, from, to, prevFrom, prevTo);
+
+            return Ok(result);
+        }
+        [Authorize]
+        [HttpGet("export")]
+        public async Task<IActionResult> ExportBookings(
+    [FromQuery] int year,
+    [FromQuery] int month)
+        {
+            var userIdClaim = User.FindFirst("uid")?.Value;
+            if (!int.TryParse(userIdClaim, out int userId))
+                return Unauthorized();
+
+            var isPartner = User.IsInRole(Roles.Partner);
+            var result = await _service.GetBookingsForExportAsync(userId, isPartner, year, month);
+            return Ok(result);
+        }
+
+        [HttpGet("customers")]
+        public IActionResult GetAll()
+        {
+            var result =  _service.GetCustomersAsync();
+            return Ok(result);
         }
     }
 }

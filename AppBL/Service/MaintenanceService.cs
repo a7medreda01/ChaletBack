@@ -63,7 +63,7 @@ namespace AppBL.Service
                 ChaletId = dto.ChaletId,
                 Description = dto.Description,
                 Status = MaintenanceStatus.Open,
-                CreatedAt = DateTime.Now // لو عندك العمود
+                CreatedAt = DateTime.UtcNow // لو عندك العمود
             };
 
             await _repo.AddAsync(entity);

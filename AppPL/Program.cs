@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Security.Claims;
 using System.Text;
 using AppBL.Helpers;
 using AppBL.IService;
@@ -44,7 +45,6 @@ namespace AppPL
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IBookingNoteService, BookingNoteService>();
             builder.Services.AddScoped<IEmailService, EmailService>();
-            builder.Services.AddScoped<RefreshTokenService>();
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddScoped<EmailService>();
@@ -97,36 +97,85 @@ namespace AppPL
     });
             });
 
-
-
             builder.Services.AddAuthentication(options =>
             {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultAuthenticateScheme =
+                    JwtBearerDefaults.AuthenticationScheme;
+
+                options.DefaultChallengeScheme =
+                    JwtBearerDefaults.AuthenticationScheme;
             })
 .AddJwtBearer(options =>
 {
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
+    options.TokenValidationParameters =
+        new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
 
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
+            ValidIssuer =
+                builder.Configuration["Jwt:Issuer"],
+
+            ValidAudience =
+                builder.Configuration["Jwt:Audience"],
+
+            IssuerSigningKey =
+                new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(
+                        builder.Configuration["Jwt:Key"]
+                    ))
+        };
+
+    // ✅ check user active on every request
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userManager =
+                context.HttpContext.RequestServices
+                .GetRequiredService<UserManager<AppUser>>();
+
+            var userId =
+            context.Principal?.Claims
+            .FirstOrDefault(c =>
+                c.Type == "uid" ||
+                c.Type == ClaimTypes.NameIdentifier ||
+                c.Type == "sub")
+            ?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                context.Fail("Unauthorized");
+                return;
+            }
+
+            var user =
+                await userManager.FindByIdAsync(userId);
+
+            // لو المستخدم inactive
+            if (user == null || !user.IsActive)
+            {
+                context.Fail("User inactive");
+            }
+        }
     };
 });
-
             builder.Services.AddCors(options =>
             {
-                options.AddPolicy("AllowAll",
-                    policy => policy
-                        .AllowAnyOrigin()
-                        .AllowAnyHeader()
-                        .AllowAnyMethod());
+                options.AddPolicy("AllowFrontend", policy =>
+                {
+                    policy.WithOrigins(
+                        "https://alghazal.vercel.app",
+                        "https://alghazaledit.vercel.app",
+                        "http://localhost:4200",
+                        "https://alghazal.netlify.app",
+                        "https://ng-hotel-language.vercel.app"
+                    )
+                    .AllowAnyHeader()
+                    .AllowAnyMethod();
+                });
             });
 
             var app = builder.Build();
@@ -151,22 +200,33 @@ namespace AppPL
             }
 
             // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
+            //if (app.Environment.IsDevelopment())
+            //{
                 app.UseSwagger();
                 app.UseSwaggerUI();
-            }
+            //}
 
             app.UseHttpsRedirection();
-            app.MapHub<NotificationHub>("/hubs/notifications");
-            app.UseCors("AllowAll");
 
+
+            app.UseRouting();
+
+            app.UseCors("AllowFrontend");
+            app.UseStaticFiles();
+            //app.UseStaticFiles(new StaticFileOptions
+            //{
+            //    OnPrepareResponse = ctx =>
+            //    {
+            //        ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+            //        ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
+            //        ctx.Context.Response.Headers.Append("Access-Control-Allow-Methods", "*");
+            //    }
+            //});
             app.UseAuthentication();
             app.UseAuthorization();
-            app.UseStaticFiles();
-
 
             app.MapControllers();
+            app.MapHub<NotificationHub>("/hubs/notifications");
 
             app.Run();
         }
